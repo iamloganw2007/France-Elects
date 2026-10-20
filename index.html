@@ -1508,6 +1508,8 @@ function applyFx(G,fx){const w=ctrl()||G.pm===SIM.me?1:.6;for(const k in fx){con
  if(k==='appr')G.appr.pm+=v*w;else if(k==='cost')G.cost=(G.cost||0)+v;else if(k==='rate')G.bc.rate+=v;else if(k==='gr')G.bc.v+=v
  else if(k==='un')G.unemp+=v;else if(k==='infl')G.iOne=(G.iOne||0)+v;else if(k==='safe')G.cOne=(G.cOne||0)+v;else if(k==='arr')G.aOne=(G.aOne||0)+v;
  else if(k==='ind')for(const j in v)G.ind[j]=cl(G.ind[j]+v[j]);else if(k==='ang')for(const j in v)G.ang[j]=(G.ang[j]||0)+v[j]}}
+/* who an unpopular government's opponents are, by the PM's party */
+const CAMPW={0:{3:.7,4:.8,5:.5,6:.4},1:{3:.7,4:.8,5:.5,6:.4},2:{3:.7,4:.8,5:.5,6:.4},3:{0:.8,1:.6,2:.5,5:.8,4:.3,6:.3},4:{0:1,1:1,2:.8,3:.4},5:{0:1,1:1,2:.8,3:.5},6:{0:1,1:1,2:.8,3:.5}};
 function endQuarter(){const G=SIM.G,me=SIM.me;if(G.pm==null||SIM.phase!=='gov')return render();const pm0=G.pm,gov0=G.gov.length?G.gov.slice():[G.pm];
  if(G.vote&&G.vote.kind==='cens'&&!G.vote.done){G.msg=x('Votez d’abord la motion de censure.','Vote on the censure motion first.');st.gtab='asm';save();return render()}
  if(G.vote&&!G.vote.done){clearInterval(st.vt);vskip()}G.vote=null;
@@ -1547,12 +1549,15 @@ function endQuarter(){const G=SIM.G,me=SIM.me;if(G.pm==null||SIM.phase!=='gov')r
  G.pmo=G.pmo||P.map(()=>0);G.vb=G.vb||v0.slice();
  /* a government whose approval is climbing gets momentum in the polls, one that is sliding loses it (Logan 2026-10-20: too hard to turn polls around) */
  {const h=G.ah||[],a3=h.length>=3?h[h.length-3].pm:null;if(a3!=null&&h[h.length-3].pmk===pm0){const d=G.appr.pm-a3;gp.forEach(k=>{G.pmo[k]+=.035*Math.tanh(d/8)*Math.min(1.5,(sh[k]||0)*gp.length)})}}
- G.v=G.v.map((v,k)=>{if(k===7)return v;G.pmo[k]=G.pmo[k]*.7+gauss()*.05*VOL.term*Math.sqrt(smallF(v));return Math.max(.004,v*Math.exp(G.pmo[k]+.09*Math.log(Math.max(.004,G.vb[k])/Math.max(.004,v*Math.exp(-(G.gao&&G.gao[k]||0)-(G.vro&&G.vro[k]||0))))))});
+ G.v=G.v.map((v,k)=>{if(k===7)return v;G.pmo[k]=G.pmo[k]*.7+gauss()*.05*VOL.term*Math.sqrt(smallF(v));return Math.max(.004,v*Math.exp(G.pmo[k]+.09*Math.log(Math.max(.004,G.vb[k])/Math.max(.004,v*Math.exp(-(G.gao&&G.gao[k]||0)-(G.vro&&G.vro[k]||0)-(G.cso&&G.cso[k]||0))))))});
  /* the news of the quarter: one party has a moment (or a bad patch) that moves the polls */
  if(rnd()<Math.min(.85,.5*VOL.term)){const c=[0,1,2,3,4,5,6].filter(k=>G.v[k]>.03),k=c[Math.floor(rnd()*c.length)],up=rnd()<.5,m=.08+rnd()*.14,L=up?TUPS:TDNS,t=L[Math.floor(rnd()*L.length)];
   G.v[k]*=Math.exp(up?m:-m);G.pmo[k]+=up?m*.35:-m*.35;G.log.push({m:G.m,t:(up?'📈 ':'📉 ')+P[k].n+' '+x(t[0],t[1])})}
- normV(G);
- const opp=P.map((_,k)=>k).filter(k=>!gp.includes(k)&&k!==7),ow=opp.map(k=>G.v[k]*(1-(AFF[k][pm0]+AFF[pm0][k])/2));const W=sum(ow);opp.forEach((k,j)=>G.v[k]+=lost*ow[j]/W);G.v=G.v.map(v=>Math.max(.004,v));normV(G);
+ /* what the government sheds goes mostly to the parties furthest from it (before renormalising, so it isn't spread evenly) */
+ {const opp=P.map((_,k)=>k).filter(k=>!gp.includes(k)&&k!==7),ow=opp.map(k=>G.v[k]*Math.max(.05,1-(AFF[k][pm0]+AFF[pm0][k])/2));const W=sum(ow);if(lost>0)opp.forEach((k,j)=>G.v[k]+=lost*ow[j]/W)}
+ /* an unpopular government rallies the opposite camp (Logan 2026-10-20: the left should surge against an unpopular right-wing government, and vice versa): a bounded level, swapped each quarter */
+ {const dis=Math.tanh(Math.max(0,38-G.appr.pm)/12),W=CAMPW[pm0]||{};G.cso=G.cso||P.map(()=>0);G.v=G.v.map((v,k)=>{const o=gp.includes(k)?0:.2*dis*(W[k]||0)*Math.min(1,Math.sqrt(.18/Math.max(.01,v))),d=o-(G.cso[k]||0);G.cso[k]=o;return v*Math.exp(d)})}
+ normV(G);G.v=G.v.map(v=>Math.max(.004,v));normV(G);
  G.ang=G.ang.map(v=>v*.8);G.deals=(G.deals||[]).filter(d=>d.until>G.q);
  /* coalition partners lose patience when their measure waits; an angry partner walks out to the back benches */
  /* a partner short-changed on cabinet posts grows restless */
@@ -1714,7 +1719,7 @@ function econQuarter(G){const appr0=G.appr.pm;G.prev={...G.ind};
  const F=gfin(G),gd0=gdpOf(G),ec=G.ind.econ,un0=G.unemp,if0=G.infl,cr0=G.crime;
  const defP=-fbal(F)/gd0*100,imp=(F.ministries-BSUM)*.45/gd0*100*.5-taxDelta(G)/gd0*100*.4,cyc=bcTick(G);
  const gr=Math.max(-4,Math.min(6,.6+(ec-50)*.05+imp+Math.max(-1.5,Math.min(2,defP))*.15+cyc-(if0-1.4)*.12-(cr0/CR0-1)*1.5-(un0-7.6)*.05+(G.arr-ARR0)*.002));
- const gN=(gr+if0)/400;G.gdp=gd0*(1+gN);G.gdpGr=(Math.pow(1+gr/400,4)-1)*100;G.pop=popN(G)*(1+.0007+(ec-50)*.00003);
+ const gN=(gr+if0)/400;G.gdp=gd0*(1+gN);G.gdpGr=(Math.pow(1+gr/400,4)-1)*100;(G.grH=G.grH||[]).push(+gr.toFixed(2));if(G.grH.length>8)G.grH.shift();if(G.bc&&G.grH.length>=2&&G.grH.slice(-2).every(v=>v<0))G.bc.st='rec';G.pop=popN(G)*(1+.0007+(ec-50)*.00003);
  G.debt=Math.max(10,(G.debt*gd0-F.bal*25)/G.gdp);
  const unT=7.6-(ec-50)*.05-(gr-1.0)*.4+Math.max(0,if0-4)*.12+(cr0/CR0-1)*.8+(G.off.unemp||0)+(G.pjJobs||0)-cabInd(G,'jobs')*.03;G.unemp=Math.max(3,Math.min(14,un0+(unT-un0)*.35));
  const rd=-F.bal/gd0*100,ifT=1.4+(gr-1.0)*.3+Math.max(0,defP-1.5)*.2+Math.max(0,rd-6)*.25+(7.6-G.unemp)*.1+G.tx[2]*.04+G.tx[5]*.06+(G.off.infl||0)+(G.iOne||0);G.iOne=(G.iOne||0)*.7;G.infl=Math.max(-1,Math.min(10,if0+(ifT-if0)*.3));G.cpi=G.cpi*(1+G.infl/400);
@@ -2960,11 +2965,13 @@ function crEnd(G,c,r){const C=crDef(c.id);G.cr=G.cr.filter(z=>z!==c);G.crDone=G.
 function crEcon(G,c){const B=G.bc;if(!B)return null;const nb=B.nb;
  if(c.id==='heat'){c.sev=B.imb<1.6?1:B.imb<2.2?2:B.imb<2.8?3:4;if(nb)return'fail';if(B.imb<.8)return'win';return null}
  if(c.id==='slow'){const r=bcRisk(G);c.sev=r<.075?1:r<.09?2:r<.105?3:4;if(nb)return c.ctl>=40?'part':'fail';if(r<.055&&B.v>0)return'win';if(G.q-c.q0>=6)return'part';return null}
- c.sev=B.v<-3?4:B.v<-2?3:B.v<-1?2:1;if(B.rec<=0&&B.v>-.5)return c.ctl>=50?'win':c.ctl>=20?'part':'fail';return null}
+ c.sev=Math.max(techRec(G)?2:1,B.v<-3?4:B.v<-2?3:B.v<-1?2:1);if(B.rec<=0&&B.v>-.5&&!((G.grH||[]).slice(-1)[0]<0))return c.ctl>=50?'win':c.ctl>=20?'part':'fail';return null}
 /* quarters left before the next scheduled election (end of the Assembly's term, or the presidential) */
 const elIn=G=>Math.floor((Math.min((G.lastDiss??G.m)+60,G.presM??1e9)-G.m)/3);
-function crSpawn(G){const B=G.bc,has=id=>G.cr.some(c=>c.id===id);
- if(B&&B.nb&&!has('rec'))crOpen(G,'rec',2);
+/* two quarters in a row of falling GDP = a technical recession (Logan 2026-10-20) */
+const techRec=G=>{const h=G.grH||[];return h.length>=2&&h[h.length-1]<0&&h[h.length-2]<0};
+function crSpawn(G){const B=G.bc,has=id=>G.cr.some(c=>c.id===id),tr=techRec(G);
+ if(B&&(B.nb||tr)&&!has('rec')){if(tr&&!B.nb)G.log.push({m:G.m,t:x('📉 Deux trimestres consécutifs de recul du PIB : la France est officiellement en récession.','📉 Two quarters in a row of falling GDP: France is officially in recession.')});crOpen(G,'rec',tr&&B.nb?3:2)}
  else if(B&&!has('heat')&&!has('rec')&&B.imb>=1.6&&B.rec<=0)crOpen(G,'heat',1);
  else if(B&&!has('slow')&&!has('rec')&&!has('heat')&&bcRisk(G)>=.065)crOpen(G,'slow',1);
  const reg=G.cr.filter(c=>!crDef(c.id).econ).length,first=!(G.crT||0);
